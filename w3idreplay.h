@@ -18,7 +18,7 @@ public:
 
     W3IDPlayer* getIDPlayerByName(const QString &name) {
         W3IDPlayer* player = 0;
-        for (W3Player* p : W3Replay::_players.values()) {
+        for (W3Player* p : _players.values()) {
             if (p->name().toLower() == name.toLower()) {
                 player = static_cast<W3IDPlayer*>(p);
                 break;
@@ -29,7 +29,7 @@ public:
 
     W3IDPlayer* getIDPlayerByColor(W3Player::Color color) {
         W3IDPlayer* player = 0;
-        for (W3Player* p : W3Replay::_players.values()) {
+        for (W3Player* p : _players.values()) {
             if (p->color() == color) {
                 player = static_cast<W3IDPlayer*>(p);
                 break;
@@ -55,6 +55,8 @@ protected:
             QString mkey = action->data().value("mission_key").toString();
             QString key = action->data().value("key").toString();
             quint32 val = action->data().value("value").toUInt();
+            Q_UNUSED(file)
+            Q_UNUSED(val)
 
             //qDebug() << file << mkey << key << val;
 
@@ -103,11 +105,17 @@ protected:
         }
         else if (action->id() == W3ReplayAction::MapTriggerChatCommand) {
             QString message = action->data().value("message").toString();
-            W3IDPlayer* player = getIDPlayerByColor(action->player()->color());
+            W3Player* p = action->player();
+            if (p) {
+                W3IDPlayer* player = getIDPlayer(p->id());
 
-            if (player && !player->picked() && message.trimmed() == "-") {
-                // Lazy Random!
-                player->setPicked(true);
+                if (player && !player->picked() && message.trimmed() == "-") {
+                    // Lazy Random!
+                    player->setPicked(true);
+                }
+            }
+            else {
+                qDebug() << "Unknown player! " << p->name();
             }
         }
         else if (action->id() == W3ReplayAction::UnitAbility) {
@@ -117,6 +125,11 @@ protected:
             W3IDPlayer* player = getIDPlayerByColor(action->player()->color());
 
             if (!player || !player->race().isEmpty()) return;
+
+            if (id == "I04X") {
+                player->setPicked(false);
+            }
+
             // If Random, and Player's race is empty! :O
             if ((id == "I006" || id == "I02F")) {
                 // Random
@@ -165,39 +178,40 @@ protected:
             W3IDPlayer* player = getIDPlayerByColor(action->player()->color());
 
             // Ignore selection shops!
-            if (QStringList({"n01G", "n00X", "n00W", "n00M", "n00Z"}).contains(id)) return;
+            if (QStringList({"n01G", "n00X", "n00W", "n00M", "n00Z", "n00G", "h001"}).contains(id)) return;
             // Use these to find out which race the player is (and to see if it matches selection from items).
 
-            if (player == 0 || !player->race().isEmpty() || !player->picked()) return;
+            if (player == 0 || !player->race().isEmpty()) return;
             QString race = "";
-            // Builders
-            if (id == "h01T")       race = "Dryad";
-            else if (id == "h021")  race = "Morphling";
-            else if (id == "u009")  race = "Radioactive";
-            else if (id == "h009")  race = "Gnoll";
-            else if (id == "u00W")  race = "Draenei";
-            else if (id == "h035")  race = "Satyr";
-            else if (id == "h00X")  race = "Goblin";
-            else if (id == "h01B")  race = "Magnataur";
-            else if (id == "h037")  race = "Ogre";
-            else if (id == "O01Q")  race = "Tauren";
-            else if (id == "h043")  race = "Pirate";
-            else if (id == "h00Q")  race = "Nature";
-            else if (id == "h016")  race = "Furbolg";
-            else if (id == "h023")  race = "Morphling Warrior";
-            else if (id == "h008")  race = "Makrura";
-            else if (id == "h01N")  race = "Ogre";
-            else if (id == "u00I")  race = "Demonologist";
-            else if (id == "h04I")  race = "Murloc";
-            else if (id == "h007")  race = "Troll";
-            else if (id == "h02S")  race = "Faerie";
 
-            // Titans
-            if (id == "E00B") race = "Sypherious";
-            else if (id == "E00E") race = "Demonicus";
-            else if (id == "E01D") race = "Lucidious";
-            else if (id == "E00C") race = "Moltenious";
+            const QHash<QString, QString> raceMap{
+                {"h01T", "Dryad"},
+                {"h021", "Morphling"},
+                {"u009", "Radioactive"},
+                {"h009", "Gnoll"},
+                {"u00W", "Draenei"},
+                {"h035", "Satyr"},
+                {"h00X", "Goblin"},
+                {"h01B", "Magnataur"},
+                {"h037", "Ogre"},
+                {"O01Q", "Tauren"},
+                {"h043", "Pirate"},
+                {"h00Q", "Nature"},
+                {"h016", "Furbolg"},
+                {"h023", "Morphling Warrior"},
+                {"h008", "Makrura"},
+                {"h01N", "Ogre"},
+                {"u00I", "Demonologist"},
+                {"h04I", "Murloc"},
+                {"h007", "Troll"},
+                {"h02S", "Faerie"},
+                {"E00B", "Sypherious"},
+                {"E00E", "Demonicus"},
+                {"E01D", "Lucidious"},
+                {"E00C", "Moltenious"},
+            };
 
+            race = raceMap.value(id, id);
 
             player->setRace(race);
         }

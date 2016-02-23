@@ -44,6 +44,10 @@ public:
         _flag = flag;
     }
 
+    Class startClass() {
+        return _startClass;
+    }
+
     Flag flag() {
         return _flag;
     }
@@ -65,6 +69,10 @@ public:
         _randomed = randomed;
     }
 
+    void setStartClass(Class c) {
+        _startClass = c;
+    }
+
     void setRace(QString id) {
         _race = id;
     }
@@ -72,7 +80,7 @@ public:
 private:
     bool _mmdInitialized = false;
     Flag _flag;
-    // Class _startClass;
+    Class _startClass;
     // Class _endClass;
     // State _endState;
     QString _race = "";

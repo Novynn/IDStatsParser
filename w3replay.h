@@ -100,7 +100,7 @@ public:
         _left = left;
     }
 
-    quint32 leftAt() {
+    quint32 leftAt() const {
         return _left;
     }
 
@@ -114,6 +114,10 @@ public:
 
     Color color() {
         return _color;
+    }
+
+    quint8 team() {
+        return _team;
     }
 
     const QString toString() const {
@@ -151,9 +155,14 @@ public:
         // Split into 4 bytes:
         QByteArrayBuilder b;
         b.insertDWord(data);
-        if (b.peekByte(3) == 0x0D &&
-            b.peekByte(4) == 0x00) {
+        if (b.peekByte(2) == 0x0D &&
+            b.peekByte(3) == 0x00) {
+
+            if (b.peekByte(0) == 0x9B && b.peekByte(1) == 0x00) {
+                return "mirrorimage";
+            }
             return "ALPH";
+
         }
         else {
             return b.getStringReversed(4);
@@ -262,7 +271,7 @@ public:
                _id == 0x66;
     }
 
-    W3Player* player() {
+    W3Player* player() const {
         return _player;
     }
 
@@ -278,7 +287,7 @@ class W3Replay
 {
 public:
     W3Replay(const QByteArray &data);
-    ~W3Replay() {
+    virtual ~W3Replay() {
         qDeleteAll(_players.begin(), _players.end());
         _players.clear();
         qDeleteAll(_messages.begin(), _messages.end());
@@ -287,7 +296,7 @@ public:
         _actions.clear();
     }
 
-    bool parse(bool keepData = false);
+    bool parseAll(bool keepData = false);
 
     QList<W3Player*> players() {
         return _players.values();
@@ -324,10 +333,15 @@ public:
         return _gameName;
     }
 
+    const QString mapName() const {
+        return _mapName;
+    }
+
     quint32 time() {
         return _time;
     }
 
+    bool parseHeaderData();
 protected:
     void parseHeader(QByteArrayBuilder *contents);
     void parseBlocks(QByteArrayBuilder *contents);
@@ -348,6 +362,15 @@ protected:
 
     QList<W3ChatMessage*> _messages;
     QList<W3ReplayAction*> _actions;
+
+    quint8 _gameSpeed;
+    quint8 _gameOptions;
+    quint8 _teamsFixed;
+    quint8 _teamOptions;
+    quint32 _mapChecksum;
+
+    QString _mapName;
+    QString _creatorName;
 
     QByteArray _data;
     QByteArrayBuilder parseReplay();

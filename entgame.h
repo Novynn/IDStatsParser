@@ -7,6 +7,7 @@
 #include <qdatetime.h>
 #include "shared/boolinq.h"
 #include <qdatetime.h>
+#include <qfile.h>
 
 class ENTGame
 {
@@ -16,21 +17,56 @@ public:
         IslandDefense
     };
 
-    ENTGame(int id, GameMap map, const QByteArray &data, const QDateTime date)
+    ENTGame(int id, QString name, GameMap map, const QDateTime date, const QByteArray &data = QByteArray())
         : _id(id)
-        , _date(date){
+        , _name(name)
+        , _replay(0)
+        , _date(date) {
         _gameMap = map;
-        if (is(IslandDefense)) {
-            _replay = new W3IDReplay(data);
-        }
-        else {
-            _replay = new W3Replay(data);
+        loadReplay(data);
+    }
+
+    void loadReplayName(const QByteArray &data) {
+        if (data.size() > 0) {
+            if (is(IslandDefense)) {
+                _replay = new W3IDReplay(data);
+            }
+            else {
+                _replay = new W3Replay(data);
+            }
+            _replay->parseHeaderData();
+            _name = _replay->name();
+            delete _replay;
+            _replay = 0;
         }
     }
 
-    ~ENTGame() {
+    bool loadReplay(const QByteArray &data) {
+        bool success = false;
+        if (data.size() > 0) {
+            if (is(IslandDefense)) {
+                _replay = new W3IDReplay(data);
+            }
+            else {
+                _replay = new W3Replay(data);
+                Q_ASSERT(false);
+            }
+            success = _replay->parseAll();
+            if (success) {
+                _name = _replay->name();
+            }
+            return success;
+        }
+        return false;
+    }
+
+    void unloadReplay() {
         delete _replay;
         _replay = 0;
+    }
+
+    ~ENTGame() {
+        unloadReplay();
     }
 
     const QDateTime date() const {
@@ -41,29 +77,44 @@ public:
         return _gameMap == map;
     }
 
-    bool parse()
-    {
-        return _replay->parse();
+    bool parse() {
+        return replay()->parseAll();
     }
 
     W3Replay* replay() {
+        if (_replay != 0) {
+            return _replay;
+        }
+        loadReplayFromLocalDisk();
         return _replay;
     }
 
+    bool loadReplayFromLocalDisk() {
+        // Save a local copy
+        QFile file("replays/" + QString::number(_id) + ".w3g");
+        QByteArray data;
+        if (file.open(QFile::ReadOnly)) {
+            data = file.readAll();
+        }
+        file.close();
+
+        return loadReplay(data);
+    }
+
     QList<W3Player*> players() {
-        return _replay->players();
+        return replay()->players();
     }
 
     uint id() {
         return _id;
     }
 
-    const QString name() const {
-        return _replay->name();
+    const QString name() {
+        return _name;
     }
 
     uint durationAsMS() {
-        return _replay->time();
+        return replay()->time();
     }
 
     QString duration() {
@@ -72,7 +123,7 @@ public:
 
     QList<W3IDPlayer*> getDesyncedPlayers() {
         QList<W3IDPlayer*> list;
-        W3IDReplay* idReplay = static_cast<W3IDReplay*>(_replay);
+        W3IDReplay* idReplay = static_cast<W3IDReplay*>(replay());
         if (idReplay == 0 || !is(ENTGame::IslandDefense)) return list;
 
 
@@ -91,7 +142,7 @@ public:
     const QString findWinner(bool output = false) {
         QString winner;
         if (output) std::cout << "\n";
-        W3IDReplay* idReplay = static_cast<W3IDReplay*>(_replay);
+        W3IDReplay* idReplay = static_cast<W3IDReplay*>(replay());
         if (idReplay == 0 || !is(ENTGame::IslandDefense)) return "Unknown";
 
         // Check if the Titan left early...
@@ -207,6 +258,7 @@ public:
 
 private:
     uint _id;
+    QString _name;
     W3Replay* _replay;
     QDateTime _date;
 

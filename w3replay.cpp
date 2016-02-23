@@ -1,5 +1,6 @@
 #include "w3replay.h"
 #include "shared/qbytearraybuilder.h"
+#include "shared/functions.h"
 #include <iostream>
 #include <QDebug>
 #include "zlib/include/zlib.h"
@@ -49,7 +50,7 @@ QByteArray gUncompress(const QByteArray &data)
         case Z_DATA_ERROR:
         case Z_MEM_ERROR:
             (void)inflateEnd(&strm);
-            qDebug() << "error?" << ret;
+            //qDebug() << "error?" << ret;
             return QByteArray();
         }
 
@@ -61,8 +62,18 @@ QByteArray gUncompress(const QByteArray &data)
     return result;
 }
 
+bool W3Replay::parseHeaderData() {
+    QByteArrayBuilder contents = parseReplay();
+    if (contents.size() == 0) {
+        _data.clear();
+        return false;
+    }
+    parseHeader(&contents);
+    _data.clear();
+    return true;
+}
 
-bool W3Replay::parse(bool keepData) {
+bool W3Replay::parseAll(bool keepData) {
     QByteArrayBuilder contents = parseReplay();
     if (contents.size() == 0) {
         _data.clear();
@@ -94,11 +105,11 @@ QByteArrayBuilder W3Replay::parseReplay() {
     dword cblocks = input.getDWord();
 
     if(csize != (uint)_data.size()) {
-        qDebug() << "replay data is corrupted or missing";
+        //qDebug() << "replay data is corrupted or missing";
         return contents;
     }
     if(version > 1) {
-        qDebug() << "replay version check failed";
+        //qDebug() << "replay version check failed";
         return contents;
     }
 
@@ -156,7 +167,7 @@ W3ReplayAction* W3Replay::parseAction(quint8 pid, QByteArrayBuilder* contents) {
     //qDebug() << "Parsing 0x" + QString::number(id, 16);
     W3ReplayAction* action = new W3ReplayAction(_players.value(pid), id, _time);
     if (!action->parse(contents)) {
-        qDebug() << "FAILED TO PARSE " << id;
+        //qDebug() << "FAILED TO PARSE " << id << "in" << name();
         return 0;
     }
     addAction(action);
@@ -209,7 +220,12 @@ void W3Replay::parseLeaveGame(QByteArrayBuilder* contents) {
     quint32 result = contents->getDWord();
     quint32 unknown = contents->getDWord();
 
-    _players.value(pid)->setLeftAt(_time);
+    Q_UNUSED(reason)
+    Q_UNUSED(result)
+    Q_UNUSED(unknown)
+
+    if (_players.contains(pid))
+        _players.value(pid)->setLeftAt(_time);
 }
 
 void W3Replay::parseStartGame(byte id, QByteArrayBuilder* contents) {
@@ -303,13 +319,38 @@ void W3Replay::parseHeader(QByteArrayBuilder* contents) {
 
     _gameName = contents->getString();
     contents->getByte();
-
     // TODO: Parse encoded string
-    QString encodedString = contents->getString();
-    contents->getDWord(); // slotsCount
+    int len = 0;
+    quint8 b = 0;
+    do {}
+    while ((b = contents->peekByte(len++)) != 0x00);
+    QByteArray encodedString = contents->getVoid(len);
+    QByteArrayBuilder decodedString = Functions::decodeStatString(encodedString);
 
-    contents->getDWord(); // type
-    contents->getDWord(); // lang
+    _gameSpeed = decodedString.getByte();
+    _gameOptions = decodedString.getByte();
+    _teamsFixed = decodedString.getByte();
+    _teamOptions = decodedString.getByte();
+    decodedString.getByte(); // 0
+    decodedString.getByte(); // ?
+    decodedString.getByte(); // 0
+    decodedString.getByte(); // ?
+    decodedString.getByte(); // 0
+    _mapChecksum = decodedString.getDWord();
+
+    Q_ASSERT(decodedString.getPointer() == 13);
+
+    _mapName = "";
+    _creatorName = "";
+
+    _mapName = decodedString.getString();
+    _creatorName = decodedString.getString();
+    decodedString.getString(); // Empty
+
+    quint32 s = contents->getDWord(); // slotsCount
+
+    quint32 type = contents->getDWord(); // type
+    quint32 lang = contents->getDWord(); // lang
 
     // Player Records
     while (contents->peekByte() == 0x16) {
@@ -318,7 +359,7 @@ void W3Replay::parseHeader(QByteArrayBuilder* contents) {
     }
 
     // Game Start Record
-    contents->getByte(); // 0x19
+    Q_ASSERT(contents->getByte()); // 0x19
     contents->getWord(); // Length of following data
     byte nslots = contents->getByte();
 
@@ -377,7 +418,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
         break;
     case UnitAbilityTargetPosition:
         contents->getWord();
-        contents->getDWord();
+        _data.insert("unitid", W3ReplayAction::toItemID(contents->getDWord()));
         contents->getDWord();
         contents->getDWord();
         contents->getDWord();
@@ -385,7 +426,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
         break;
     case UnitAbilityTargetPositionObject:
         contents->getWord();
-        contents->getDWord();
+        _data.insert("unitid", W3ReplayAction::toItemID(contents->getDWord()));
         contents->getDWord();
         contents->getDWord();
         contents->getDWord();
@@ -395,7 +436,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
         break;
     case UnitManipulateItem:
         contents->getWord();
-        contents->getDWord();
+        _data.insert("unitid", W3ReplayAction::toItemID(contents->getDWord()));
         contents->getDWord();
         contents->getDWord();
         contents->getDWord();
@@ -408,7 +449,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
     case UnitAbilityTwoTargetTwoObjects:
         contents->getWord();
 
-        contents->getDWord();
+        _data.insert("unitid1", W3ReplayAction::toItemID(contents->getDWord()));
 
         contents->getDWord();
         contents->getDWord();
@@ -416,7 +457,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
         contents->getDWord();
         contents->getDWord();
 
-        contents->getDWord();
+        _data.insert("unitid2", W3ReplayAction::toItemID(contents->getDWord()));
 
         contents->getVoid(9);
 
@@ -428,6 +469,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
             // 0x01 =
             quint8 type = contents->getByte();
             quint16 n = contents->getWord();
+            Q_UNUSED(type)
 
             for (quint16 i = 0; i < n; i++) {
                 contents->getDWord();
@@ -587,7 +629,7 @@ bool W3ReplayAction::parse(QByteArrayBuilder *contents) {
         _data.insert("key", contents->getByte());
         break;
     default:
-        qDebug() << "Unknown Action: 0x" + QString::number(_id, 16);
+        //qDebug() << "Unknown Action: 0x" + QString::number(_id, 16);
         return false;
     }
 
